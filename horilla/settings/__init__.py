@@ -2,4 +2,7 @@
 
 from horilla.settings.base import *
 from horilla.settings import horilla_apps
-from horilla.settings.local_settings import *
+try:
+    from horilla.settings.local_settings import *
+except ImportError:
+    pass
