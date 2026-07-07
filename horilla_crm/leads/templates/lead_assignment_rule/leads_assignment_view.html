@@ -1,0 +1,7 @@
+{% extends "settings/settings.html" %}
+{% block settings %}
+    <div id="lead-assignment-view">
+        <div id="navBar" hx-get="{{ nav_url}}?{{ request.GET.urlencode}}" hx-trigger="load"></div>
+        <div id="mainSession" class="pt-3" hx-get="{{ list_url }}?{{ request.GET.urlencode}}" hx-trigger="load"></div>
+    </div>
+{% endblock %}

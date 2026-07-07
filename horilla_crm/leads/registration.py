@@ -1,0 +1,33 @@
+"""
+Feature registration for Leads app.
+"""
+
+# First party imports (Horilla)
+from horilla.contrib.cadences.registration import register_cadence_tab
+from horilla.registry.feature import register_model_for_feature
+
+register_model_for_feature(
+    app_label="leads",
+    model_name="LeadStatus",
+    features=["import_data", "export_data", "global_search"],
+)
+
+register_model_for_feature(
+    app_label="leads",
+    model_name="Lead",
+    all=True,
+    features=[
+        "duplicate_models",
+        "approval_models",
+        "reviews_models",
+        "workflow_models",
+        "scoring",
+    ],
+)
+
+register_cadence_tab(
+    app_label="leads",
+    model_name="Lead",
+    url_prefix="lead-cadences-tab/<int:pk>/",
+    url_name="lead_cadences_tab",
+)

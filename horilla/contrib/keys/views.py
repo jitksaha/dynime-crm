@@ -1,0 +1,238 @@
+"""
+Views for the keys app
+"""
+
+# Standard library imports
+import logging
+from functools import cached_property
+
+# Third-party imports (Django)
+from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views import View
+
+from horilla.contrib.generics.views import (
+    HorillaListView,
+    HorillaNavView,
+    HorillaSingleDeleteView,
+    HorillaSingleFormView,
+    HorillaView,
+)
+
+# First party imports (Horilla)
+from horilla.urls import reverse_lazy
+from horilla.utils.decorators import (
+    htmx_required,
+    method_decorator,
+    permission_required,
+    permission_required_or_denied,
+)
+from horilla.utils.translation import gettext_lazy as _
+from horilla.web import HttpResponse, JsonResponse
+
+# Local imports
+from .filters import ShortKeyFilter
+from .forms import ShortcutKeyForm
+from .models import ShortcutKey
+
+logger = logging.getLogger(__name__)
+
+
+@method_decorator(
+    permission_required_or_denied(
+        ["keys.view_shortcutkey", "keys.view_own_shortcutkey"]
+    ),
+    name="dispatch",
+)
+class ShortKeyView(LoginRequiredMixin, HorillaView):
+    """
+    TemplateView for short key view.
+    """
+
+    template_name = "short_key_view.html"
+    nav_url = reverse_lazy("keys:short_key_nav")
+    list_url = reverse_lazy("keys:short_key_list")
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required(["keys.view_shortcutkey", "keys.view_own_shortcutkey"]),
+    name="dispatch",
+)
+class ShortKeyNavbar(LoginRequiredMixin, HorillaNavView):
+    """
+    Navbar for short key
+    """
+
+    nav_title = _("Short Keys")
+    search_url = reverse_lazy("keys:short_key_list")
+    main_url = reverse_lazy("keys:short_key_view")
+    filterset_class = ShortKeyFilter
+    one_view_only = True
+    all_view_types = False
+    filter_option = False
+    reload_option = False
+    model_name = "ShortcutKey"
+    model_app_label = "keys"
+    nav_width = False
+    gap_enabled = False
+
+    @cached_property
+    def new_button(self):
+        """Return configuration for the create new shortcut key button."""
+        if self.request.user.has_perm(
+            "keys.add_own_shortcutkey"
+        ) or self.request.user.has_perm("keys.create_shortcutkey"):
+            return {
+                "url": f"""{reverse_lazy("keys:short_key_create")}?new=true""",
+                "attrs": {"id": "short-key-create"},
+            }
+        return None
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required(["keys.view_shortcutkey", "keys.view_own_shortcutkey"]),
+    name="dispatch",
+)
+class ShortKeyListView(LoginRequiredMixin, HorillaListView):
+    """
+    List view of user short key
+    """
+
+    model = ShortcutKey
+    view_id = "short_key_list"
+    filterset_class = ShortKeyFilter
+    search_url = reverse_lazy("keys:short_key_list")
+    main_url = reverse_lazy("keys:short_key_view")
+    table_width = False
+    bulk_update_option = False
+    bulk_export_option = False
+    store_ordered_ids = True
+    table_height_as_class = "h-[calc(_100vh_-_320px_)]"
+    list_column_visibility = False
+
+    columns = [(_("Page"), "page_display"), (_("Key"), "custom_key_col")]
+
+    def get_queryset(self):
+        """Return shortcut keys filtered by the logged-in user across all companies."""
+        user = self.request.user
+        if not user:
+            return self.model.all_objects.none()
+        return self.model.all_objects.filter(user=user)
+
+    actions = [
+        {
+            "action": "Edit",
+            "src": "assets/icons/edit.svg",
+            "img_class": "w-4 h-4",
+            "permissions": "keys.change_shortcutkey",
+            "owner_field": "user",
+            "own_permission": "keys.change_own_shortcutkey",
+            "attrs": """
+                    hx-get="{get_edit_url}?new=true"
+                    hx-target="#modalBox"
+                    hx-swap="innerHTML"
+                    onclick="openModal()"
+                    """,
+        },
+        {
+            "action": "Delete",
+            "src": "assets/icons/a4.svg",
+            "img_class": "w-4 h-4",
+            "permissions": "keys.delete_shortcutkey",
+            "owner_field": "user",
+            "own_permission": "keys.delete_own_shortcutkey",
+            "attrs": """
+                    hx-post="{get_delete_url}"
+                    hx-target="#deleteModeBox"
+                    hx-swap="innerHTML"
+                    hx-trigger="click"
+                    hx-vals='{{"check_dependencies": "true"}}'
+                    onclick="openDeleteModeModal()"
+                """,
+        },
+    ]
+
+
+@method_decorator(htmx_required, name="dispatch")
+class ShortKeyFormView(LoginRequiredMixin, HorillaSingleFormView):
+    """
+    create and update from view for short key
+    """
+
+    model = ShortcutKey
+    form_class = ShortcutKeyForm
+    modal_height = False
+    form_title = _("Short Key")
+    full_width_fields = ["page"]
+    hidden_fields = ["is_active", "user", "company"]
+
+    @cached_property
+    def form_url(self):
+        """Return the create or update URL for the shortcut key form."""
+        pk = self.kwargs.get("pk") or self.request.GET.get("id")
+        if pk:
+            return reverse_lazy("keys:short_key_update", kwargs={"pk": pk})
+        return reverse_lazy("keys:short_key_create")
+
+    def get_initial(self):
+        """Set initial form data with current user and their assigned company."""
+        initial = super().get_initial()
+        initial["user"] = self.request.user
+        initial["company"] = getattr(self.request.user, "company", None)
+        return initial
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["request"] = self.request
+        return kwargs
+
+    def get(self, request, *args, **kwargs):
+        pk = kwargs.get("pk")
+        if pk:
+            try:
+                self.model.all_objects.get(pk=pk)
+            except self.model.DoesNotExist:
+                messages.error(request, _("The requested data does not exist."))
+                return HttpResponse("<script>$('#reloadButton').click();</script>")
+
+        return super().get(request, *args, **kwargs)
+
+
+@method_decorator(htmx_required, name="dispatch")
+@method_decorator(
+    permission_required_or_denied(
+        ["keys.delete_shortcutkey", "keys.delete_own_shortcutkey"], modal=True
+    ),
+    name="dispatch",
+)
+class ShortcutKeyDeleteView(LoginRequiredMixin, HorillaSingleDeleteView):
+    """View to handle deletion of shortcut keys."""
+
+    model = ShortcutKey
+
+    def get_post_delete_response(self):
+        """Return HTMX response to reload shortcut key list after deletion."""
+        return HttpResponse("<script>htmx.trigger('#reloadButton','click');</script>")
+
+
+class ShortKeyDataView(LoginRequiredMixin, View):
+    """
+    View to return shortcut data as JSON for the current user.
+    """
+
+    def get(self, request, *args, **kwargs):
+        """Return all shortcut keys for the logged-in user as JSON."""
+        shortcuts = [
+            {
+                "key": sk.key,
+                "page": sk.page,
+                "command": sk.command.lower(),
+                "section": sk.get_section(),
+                "title": sk.get_page_title(),
+            }
+            for sk in ShortcutKey.all_objects.filter(user=request.user)
+        ]
+
+        return JsonResponse({"shortcuts": shortcuts})
