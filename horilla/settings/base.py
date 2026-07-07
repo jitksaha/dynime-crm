@@ -46,6 +46,17 @@ ENVIRONMENT = env("ENVIRONMENT")
 SECRET_KEY = env("SECRET_KEY")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
+
+# Ensure the custom domain and wildcard are in ALLOWED_HOSTS if not set to wildcard '*'
+if "*" not in ALLOWED_HOSTS:
+    for host in ["crm.dynime.com", ".dynime.com", "dynime.com"]:
+        if host not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(host)
+
+# Ensure the custom domain and its wildcard/subdomain variants are trusted for CSRF
+for origin in ["https://crm.dynime.com", "https://*.dynime.com", "https://dynime.com", "https://*.onrender.com"]:
+    if origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(origin)
 # Custom page when CSRF verification fails (production); DEBUG=True still uses Django's technical view.
 CSRF_FAILURE_VIEW = "horilla.contrib.core.views.error_pages.csrf_failure"
 # Public-facing HTTPS URL for Google Calendar webhook push notifications.
